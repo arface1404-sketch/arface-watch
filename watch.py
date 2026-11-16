@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 SNAP_DIR = DATA / "snapshots"
-API = "https://api.torob.com/v4/base-product/search/?query={q}&page=0"
+API = "https://api.torob.com/v4/base-product/search/?q={q}&page=0"
 UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
 
 # (key, category title, Torob search query, words the product name MUST contain,
