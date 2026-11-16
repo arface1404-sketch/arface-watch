@@ -1,0 +1,32 @@
+name: torob-watch
+
+on:
+  schedule:
+    # Mondays 02:30 UTC = 06:00 Tehran
+    - cron: "30 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run Torob watch
+        run: python watch.py
+      - name: Commit results
+        run: |
+          git config user.name "arface-watch bot"
+          git config user.email "actions@github.com"
+          git add data report.md
+          if git diff --cached --quiet; then
+            echo "no changes"
+          else
+            git commit -m "weekly torob watch $(date -u +%F)"
+            git push
+          fi
