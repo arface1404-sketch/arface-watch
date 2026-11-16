@@ -30,3 +30,7 @@ jobs:
             git commit -m "weekly torob watch $(date -u +%F)"
             git push
           fi
+      - name: Send report to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: python send_report.py
