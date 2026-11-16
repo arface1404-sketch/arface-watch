@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Weekly Torob price watch for soaps similar to Arface's.
+"""Weekly Torob price watch for HANDMADE soaps of the same kinds Arface makes.
+
+Scope (owner's rule): only handmade soaps, only in Arface's own seven kinds —
+snail, activated charcoal, clay, loofah, pomegranate, silk cocoon, glycerin.
+Industrial/brand soaps, pharmacies and soap-making raw materials are excluded.
 
 Reads Torob's public search API, keeps dated snapshots + a history CSV,
 and writes a clean Persian report (report.md) with week-over-week changes.
@@ -19,16 +23,29 @@ SNAP_DIR = DATA / "snapshots"
 API = "https://api.torob.com/v4/base-product/search/?query={q}&page=0"
 UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
 
-# (key, category title, Torob search query, Arface's own soap name, own site price in Toman)
+# (key, category title, Torob search query, words the product name MUST contain,
+#  Arface's own soap name, own site price in Toman)
 CATEGORIES = [
-    ("snail", "صابون حلزون", "صابون حلزون", "صابون حلزون آرفیس (پوست چرب و خشک)", 269000),
-    ("charcoal", "صابون زغال فعال", "صابون زغال فعال", "صابون زغال فعال آرفیس", 258000),
-    ("clay", "صابون خاک رس", "صابون خاک رس", "صابون خاک رس آرفیس", 257000),
-    ("loofah", "صابون لوفا", "صابون لوفا", "صابون لوفا آرفیس", 242000),
-    ("pomegranate", "صابون انار و عسل", "صابون انار", "صابون انار و عسل آرفیس", 244000),
-    ("silk", "صابون پیله ابریشم", "صابون پیله ابریشم", "صابون پیله ابریشم آرفیس", 242000),
-    ("glycerin", "صابون گلیسیرینه", "صابون گلیسیرینه", None, None),
+    ("snail", "صابون حلزون", "صابون دست ساز حلزون", ["حلزون"],
+     "صابون حلزون آرفیس (پوست چرب و خشک)", 269000),
+    ("charcoal", "صابون زغال فعال", "صابون دست ساز زغال فعال", ["زغال"],
+     "صابون زغال فعال آرفیس", 258000),
+    ("clay", "صابون خاک رس", "صابون دست ساز خاک رس", ["خاک رس", "خاک‌رس"],
+     "صابون خاک رس آرفیس", 257000),
+    ("loofah", "صابون لوفا", "صابون دست ساز لوفا", ["لوفا"],
+     "صابون لوفا آرفیس", 242000),
+    ("pomegranate", "صابون انار و عسل", "صابون دست ساز انار", ["انار"],
+     "صابون انار و عسل آرفیس", 244000),
+    ("silk", "صابون پیله ابریشم", "صابون دست ساز پیله ابریشم", ["پیله", "ابریشم"],
+     "صابون پیله ابریشم آرفیس", 242000),
+    ("glycerin", "صابون گلیسیرینه", "صابون دست ساز گلیسیرینه", ["گلیسیرین"],
+     None, None),
 ]
+# A listing counts as handmade only if one of these appears in its name or shop name.
+HANDMADE_ANY = ["دست‌ساز", "دستساز", "دست ساز", "گیاهی", "طبیعی", "ارگانیک", "سنتی", "خانگی"]
+# Industrial / mass brands and pharmacy products are not Arface's field.
+BRAND_BLOCK = ["فیروز", "دیترون", "داو", "نیوآ", "لوکس", "جانسون", "صحت", "گلرنگ",
+               "داروگر", "ایروکس", "هیدرودرم", "سینره", "کامان", "لپیور", "دکتر بیز"]
 # Raw materials and soap-making supplies are not competitors.
 EXCLUDE = ["پایه صابون", "مواد اولیه", "قالب صابون", "پارافین", "کیلویی",
            "اسانس", "رنگ صابون", "سود سوزآور", "شمع سازی", "شمع‌سازی"]
@@ -46,7 +63,7 @@ def fetch(query):
         return json.loads(r.read().decode("utf-8"))
 
 
-def clean_items(payload):
+def clean_items(payload, must_words):
     items = []
     for it in payload.get("results", []):
         name = (it.get("name1") or "").strip()
@@ -56,7 +73,14 @@ def clean_items(payload):
             shop = shop[3:].strip()
         if not name or not price:
             continue
-        if any(x in name for x in EXCLUDE):
+        if not any(w in name for w in must_words):
+            continue  # not this kind of soap
+        haystack = name + " " + shop
+        if not any(w in haystack for w in HANDMADE_ANY):
+            continue  # not handmade
+        if any(x in name for x in EXCLUDE) or any(x in name for x in BRAND_BLOCK):
+            continue
+        if "داروخانه" in shop:
             continue
         items.append({"name": name, "price": int(price), "shop": shop})
     items.sort(key=lambda x: x["price"])
@@ -87,9 +111,9 @@ def main():
     body = []
     hist_rows = []
 
-    for key, title, query, own_name, own_price in CATEGORIES:
+    for key, title, query, must_words, own_name, own_price in CATEGORIES:
         try:
-            items = clean_items(fetch(query))
+            items = clean_items(fetch(query), must_words)
             err = None
         except Exception as e:  # keep going; report the failure for this category
             items, err = [], str(e)
@@ -102,11 +126,11 @@ def main():
         if err:
             body.append(f"- این هفته خوانده نشد (خطا: {err})")
         elif not items:
-            body.append("- موردی پیدا نشد")
+            body.append("- صابون دست‌ساز مشابهی این هفته پیدا نشد")
         else:
             cheap = items[0]
             body.append(
-                f"- ارزان‌ترین مشابه در ترب: {cheap['name']} — {fa(cheap['price'])} تومان — فروشگاه: {cheap['shop']}"
+                f"- ارزان‌ترین دست‌ساز مشابه در ترب: {cheap['name']} — {fa(cheap['price'])} تومان — فروشگاه: {cheap['shop']}"
             )
             for i, it in enumerate(items, 1):
                 body.append(f"{i}. {it['name']} — {fa(it['price'])} تومان — {it['shop']}")
@@ -121,7 +145,7 @@ def main():
             )
         body.append("")
 
-    head = [f"# گزارش هفتگی پایش قیمت صابون در ترب — {today}", ""]
+    head = [f"# گزارش هفتگی پایش قیمت صابون دست‌ساز در ترب — {today}", ""]
     if changes:
         head += ["## تغییرهای این هفته نسبت به هفته قبل", ""] + changes + [""]
     elif prev:
